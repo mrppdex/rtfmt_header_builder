@@ -93,6 +93,7 @@ ui <- fluidPage(
       }
       .btn-full-width {
         width: 100%;
+        margin-top: 5px;
       }
     "))
   ),
@@ -115,6 +116,8 @@ ui <- fluidPage(
       uiOutput("edit_panel_ui"),
       
       hr(),
+      h4("Final Formatting"),
+      actionButton("align_bottom_btn", "Align Labels to Bottom", class = "btn-secondary btn-full-width"),
       actionButton("reset_btn", "Reset All", class = "btn-danger btn-full-width")
     ),
     mainPanel(
@@ -244,7 +247,6 @@ server <- function(input, output, session) {
     }
     path <- selected_path()[1]
     
-    # BUG FIX: Correctly build the accessor string for nested lists
     path_parts <- strsplit(path, "-")[[1]]
     accessor <- "header_structure()"
     accessor <- paste0(accessor, "[[", path_parts[1], "]]")
@@ -270,7 +272,6 @@ server <- function(input, output, session) {
     path <- selected_path()[1]
     current_header <- header_structure()
     
-    # BUG FIX: Correctly build the accessor string for nested lists
     path_parts <- strsplit(path, "-")[[1]]
     accessor <- "current_header"
     accessor <- paste0(accessor, "[[", path_parts[1], "]]")
@@ -295,10 +296,8 @@ server <- function(input, output, session) {
     index_to_remove <- as.numeric(tail(strsplit(path, "-")[[1]], 1))
     
     if (parent_path == "") {
-      # It's a top-level item
       current_header <- current_header[-index_to_remove]
     } else {
-      # BUG FIX: Correctly build accessor to the PARENT's sublist to modify it
       path_parts_parent <- strsplit(parent_path, "-")[[1]]
       
       list_accessor <- "current_header"
@@ -322,6 +321,60 @@ server <- function(input, output, session) {
 
   observeEvent(input$reset_btn, {
     header_structure(list())
+    selected_path(NULL)
+  })
+  
+  # --- Bottom-Alignment Logic ---
+  
+  # Recursive function to find the maximum depth of the structure
+  get_max_depth <- function(h, current_depth = 1) {
+    if (is.null(h) || length(h) == 0) {
+      return(current_depth)
+    }
+    
+    child_depths <- vapply(h, function(item) {
+      if (is.null(item$sub)) {
+        return(current_depth)
+      } else {
+        return(get_max_depth(item$sub, current_depth + 1))
+      }
+    }, numeric(1))
+    
+    return(max(child_depths))
+  }
+  
+  # Recursive function to pad the structure to achieve bottom alignment
+  pad_structure <- function(h, max_depth, current_depth = 1) {
+    lapply(h, function(item) {
+      # Recurse first
+      if (!is.null(item$sub)) {
+        item$sub <- pad_structure(item$sub, max_depth, current_depth + 1)
+      }
+      
+      # Calculate how many levels this item's own label needs to be pushed down
+      item_own_depth <- if (is.null(item$sub)) current_depth else get_max_depth(item$sub, current_depth)
+      padding_needed <- max_depth - item_own_depth
+
+      if (padding_needed > 0) {
+        new_item <- item
+        for (i in 1:padding_needed) {
+          new_item <- list(label = " ", just = "c", sub = list(new_item))
+        }
+        return(new_item)
+      } else {
+        return(item)
+      }
+    })
+  }
+  
+  observeEvent(input$align_bottom_btn, {
+    current_header <- header_structure()
+    if (length(current_header) == 0) return()
+    
+    max_depth <- get_max_depth(current_header)
+    padded_header <- pad_structure(current_header, max_depth)
+    
+    header_structure(padded_header)
     selected_path(NULL)
   })
   
