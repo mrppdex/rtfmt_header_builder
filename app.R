@@ -324,7 +324,7 @@ server <- function(input, output, session) {
     selected_path(NULL)
   })
   
-  # --- Bottom-Alignment Logic ---
+  # --- Bottom-Alignment Logic (REVISED) ---
   
   # Recursive function to find the maximum depth of a given structure/sub-structure
   get_max_depth <- function(h, current_depth = 1) {
@@ -343,36 +343,52 @@ server <- function(input, output, session) {
     return(max(child_depths))
   }
   
-  observeEvent(input$align_bottom_btn, {
-    current_header <- header_structure()
-    if (length(current_header) == 0) return()
+  # New recursive function to align children at each level
+  align_children_recursively <- function(h) {
+    if (is.null(h) || length(h) == 0) {
+      return(h)
+    }
     
-    # 1. Calculate the overall maximum depth of the entire structure
-    overall_max_depth <- get_max_depth(current_header)
+    # 1. Post-order traversal: Align children of children first.
+    h_children_aligned <- lapply(h, function(item) {
+      if (!is.null(item$sub)) {
+        item$sub <- align_children_recursively(item$sub)
+      }
+      return(item)
+    })
     
-    # 2. Process each top-level element
-    new_header <- lapply(current_header, function(top_level_item) {
+    # 2. Find the max depth among the direct children in the current list
+    max_depth_in_level <- max(vapply(h_children_aligned, function(item) {
+      get_max_depth(list(item))
+    }, numeric(1)))
+    
+    # 3. Pad each child to match the max depth
+    h_padded <- lapply(h_children_aligned, function(item) {
+      individual_max_depth <- get_max_depth(list(item))
+      padding_needed <- max_depth_in_level - individual_max_depth
       
-      # 3. Calculate the max depth of this specific top-level branch
-      individual_max_depth <- get_max_depth(list(top_level_item))
-      
-      # 4. Calculate padding needed
-      padding_needed <- overall_max_depth - individual_max_depth
-      
-      # 5. Apply padding by wrapping the element if necessary
       if (padding_needed > 0) {
-        padded_item <- top_level_item
+        padded_item <- item
         for (i in 1:padding_needed) {
           padded_item <- list(label = " ", just = "c", sub = list(padded_item))
         }
         return(padded_item)
       } else {
-        return(top_level_item)
+        return(item)
       }
     })
     
-    # 6. Update the header structure
-    header_structure(new_header)
+    return(h_padded)
+  }
+
+  observeEvent(input$align_bottom_btn, {
+    current_header <- header_structure()
+    if (length(current_header) == 0) return()
+    
+    # Call the new recursive alignment function
+    aligned_header <- align_children_recursively(current_header)
+    
+    header_structure(aligned_header)
     selected_path(NULL)
   })
   
