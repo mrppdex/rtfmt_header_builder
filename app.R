@@ -326,14 +326,14 @@ server <- function(input, output, session) {
   
   # --- Bottom-Alignment Logic ---
   
-  # Recursive function to find the maximum depth of the structure
+  # Recursive function to find the maximum depth of a given structure/sub-structure
   get_max_depth <- function(h, current_depth = 1) {
     if (is.null(h) || length(h) == 0) {
-      return(current_depth)
+      return(current_depth - 1)
     }
     
     child_depths <- vapply(h, function(item) {
-      if (is.null(item$sub)) {
+      if (is.null(item$sub) || length(item$sub) == 0) {
         return(current_depth)
       } else {
         return(get_max_depth(item$sub, current_depth + 1))
@@ -343,38 +343,36 @@ server <- function(input, output, session) {
     return(max(child_depths))
   }
   
-  # Recursive function to pad the structure to achieve bottom alignment
-  pad_structure <- function(h, max_depth, current_depth = 1) {
-    lapply(h, function(item) {
-      # Recurse first
-      if (!is.null(item$sub)) {
-        item$sub <- pad_structure(item$sub, max_depth, current_depth + 1)
-      }
-      
-      # Calculate how many levels this item's own label needs to be pushed down
-      item_own_depth <- if (is.null(item$sub)) current_depth else get_max_depth(item$sub, current_depth)
-      padding_needed <- max_depth - item_own_depth
-
-      if (padding_needed > 0) {
-        new_item <- item
-        for (i in 1:padding_needed) {
-          new_item <- list(label = " ", just = "c", sub = list(new_item))
-        }
-        return(new_item)
-      } else {
-        return(item)
-      }
-    })
-  }
-  
   observeEvent(input$align_bottom_btn, {
     current_header <- header_structure()
     if (length(current_header) == 0) return()
     
-    max_depth <- get_max_depth(current_header)
-    padded_header <- pad_structure(current_header, max_depth)
+    # 1. Calculate the overall maximum depth of the entire structure
+    overall_max_depth <- get_max_depth(current_header)
     
-    header_structure(padded_header)
+    # 2. Process each top-level element
+    new_header <- lapply(current_header, function(top_level_item) {
+      
+      # 3. Calculate the max depth of this specific top-level branch
+      individual_max_depth <- get_max_depth(list(top_level_item))
+      
+      # 4. Calculate padding needed
+      padding_needed <- overall_max_depth - individual_max_depth
+      
+      # 5. Apply padding by wrapping the element if necessary
+      if (padding_needed > 0) {
+        padded_item <- top_level_item
+        for (i in 1:padding_needed) {
+          padded_item <- list(label = " ", just = "c", sub = list(padded_item))
+        }
+        return(padded_item)
+      } else {
+        return(top_level_item)
+      }
+    })
+    
+    # 6. Update the header structure
+    header_structure(new_header)
     selected_path(NULL)
   })
   
